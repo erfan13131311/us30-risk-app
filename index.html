@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ماشین حساب ریسک US30</title>
+  <title>ماشین حساب داینامیک مدیریت ریسک</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     body {
@@ -17,15 +17,15 @@
       background: var(--tg-theme-secondary-bg-color, #232e3c);
       padding: 16px;
       border-radius: 12px;
-      margin-bottom: 16px;
+      margin-bottom: 14px;
     }
     label {
       display: block;
-      margin-bottom: 6px;
+      margin-bottom: 5px;
       font-size: 13px;
       color: var(--tg-theme-hint-color, #7e8b99);
     }
-    input {
+    input, select {
       width: 100%;
       box-sizing: border-box;
       padding: 10px;
@@ -33,85 +33,169 @@
       border: 1px solid #364454;
       background: #0f1621;
       color: #fff;
-      font-size: 15px;
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+    .toggle-btn {
+      background: none;
+      border: none;
+      color: #2ea6ff;
+      font-size: 12px;
+      cursor: pointer;
+      padding: 0;
+      margin-bottom: 10px;
+      text-decoration: underline;
+    }
+    .custom-settings {
+      display: none;
+      background: #151d27;
+      padding: 10px;
+      border-radius: 8px;
       margin-bottom: 12px;
     }
     .result-box {
       border: 1px dashed #2ea6ff;
       border-radius: 8px;
-      padding: 12px;
+      padding: 14px;
       background: rgba(46, 166, 255, 0.08);
     }
     .result-row {
       display: flex;
       justify-content: space-between;
-      margin-bottom: 6px;
+      margin-bottom: 8px;
       font-size: 14px;
     }
     .highlight {
       font-weight: bold;
       color: #2ea6ff;
-      font-size: 16px;
+      font-size: 17px;
     }
   </style>
 </head>
 <body>
   <div class="card">
+    <label>نماد معاملاتی:</label>
+    <select id="preset" onchange="applyPreset()">
+      <option value="us30_1">US30 / داوجونز (Contract Size = 1) - پراپ‌ها</option>
+      <option value="us30_10">US30 / داوجونز (Contract Size = 10) - روبوفارکس/آلپاری</option>
+      <option value="gold">XAUUSD / انس طلا (Contract Size = 100)</option>
+      <option value="custom">تنظیم دستی (مشخصات بروکر شما)</option>
+    </select>
+
+    <button type="button" class="toggle-btn" onclick="toggleSettings()">⚙️ نمایش/مخفی‌سازی مشخصات قرارداد بروکر</button>
+
+    <div id="customSettings" class="custom-settings">
+      <label>اندازه قرارداد (Contract Size):</label>
+      <input type="number" id="contractSize" value="1" step="any" oninput="calculate()">
+
+      <label>ارزش هر تیک (Tick Value به دلار):</label>
+      <input type="number" id="tickValue" value="1" step="any" oninput="calculate()">
+
+      <label>اندازه تیک (Tick Size):</label>
+      <input type="number" id="tickSize" value="1" step="any" oninput="calculate()">
+    </div>
+
     <label>موجودی حساب (دلار):</label>
-    <input type="number" id="balance" value="10000" oninput="calculate()">
+    <input type="number" id="balance" value="1000" oninput="calculate()">
 
     <label>درصد ریسک (%):</label>
     <input type="number" id="riskPercent" value="1.0" step="0.1" oninput="calculate()">
 
-    <label>فاصله استاپ‌لاس (واحد شاخص US30):</label>
-    <input type="number" id="slDistance" value="50" oninput="calculate()">
+    <label id="distLabel">فاصله استاپ‌لاس (تغییر قیمت به واحد / دلار):</label>
+    <input type="number" id="slDistance" value="40" oninput="calculate()">
 
     <div class="result-box">
       <div class="result-row">
-        <span>مبلغ ریسک:</span>
-        <span id="riskCash">$100.00</span>
+        <span>مبلغ مجاز ریسک:</span>
+        <span id="riskCash">$10.00</span>
       </div>
       <div class="result-row">
         <span>حجم مجاز معامله:</span>
-        <span id="lotSize" class="highlight">2.00 Lot</span>
+        <span id="lotSize" class="highlight">0.25 Lot</span>
       </div>
       <div class="result-row">
-        <span>تارگت پیشنهادی (1:2):</span>
-        <span id="tpDistance">100 واحد</span>
+        <span>تارگت حداقل (1:2):</span>
+        <span id="tpDistance">80.0 واحد</span>
       </div>
     </div>
   </div>
 
   <script>
-    const tg = window.Telegram.WebApp;
-    tg.ready();
-    tg.expand();
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+      tg.ready();
+      tg.expand();
+    }
+
+    // لود تنظیمات ذخیره‌شده از حافظه مرورگر
+    window.onload = function() {
+      if (localStorage.getItem('balance')) document.getElementById('balance').value = localStorage.getItem('balance');
+      if (localStorage.getItem('riskPercent')) document.getElementById('riskPercent').value = localStorage.getItem('riskPercent');
+      if (localStorage.getItem('preset')) {
+        document.getElementById('preset').value = localStorage.getItem('preset');
+        applyPreset(false);
+      }
+      calculate();
+    };
+
+    function toggleSettings() {
+      const el = document.getElementById('customSettings');
+      el.style.display = (el.style.display === 'block') ? 'none' : 'block';
+    }
+
+    function applyPreset(resetValues = true) {
+      const preset = document.getElementById('preset').value;
+      const cSize = document.getElementById('contractSize');
+      const tVal = document.getElementById('tickValue');
+      const tSize = document.getElementById('tickSize');
+
+      if (preset === 'us30_1') {
+        cSize.value = 1; tVal.value = 1; tSize.value = 1;
+      } else if (preset === 'us30_10') {
+        cSize.value = 10; tVal.value = 10; tSize.value = 1;
+      } else if (preset === 'gold') {
+        cSize.value = 100; tVal.value = 1; tSize.value = 0.01;
+      }
+      localStorage.setItem('preset', preset);
+      calculate();
+    }
 
     function calculate() {
       const balance = parseFloat(document.getElementById('balance').value) || 0;
       const riskPercent = parseFloat(document.getElementById('riskPercent').value) || 0;
       const slDist = parseFloat(document.getElementById('slDistance').value) || 0;
 
+      const contractSize = parseFloat(document.getElementById('contractSize').value) || 1;
+      const tickValue = parseFloat(document.getElementById('tickValue').value) || 1;
+      const tickSize = parseFloat(document.getElementById('tickSize').value) || 1;
+
+      // ذخیره آخرین مقادیر
+      localStorage.setItem('balance', balance);
+      localStorage.setItem('riskPercent', riskPercent);
+
       const riskCash = balance * (riskPercent / 100.0);
       document.getElementById('riskCash').innerText = '$' + riskCash.toFixed(2);
 
-      if (slDist <= 0) {
+      if (slDist <= 0 || tickSize <= 0) {
         document.getElementById('lotSize').innerText = '0.00 Lot';
-        document.getElementById('tpDistance').innerText = '0 واحد';
+        document.getElementById('tpDistance').innerText = '0';
         return;
       }
 
-      // در داوجونز با Contract Size = 1، هر 1 واحد تغییر معادل 1 دلار به ازای 1 لات است
-      const calculatedLots = riskCash / slDist;
-      
-      // گرد کردن تا ۲ رقم اعشار متناسب با حداقل گام 0.01 لات
-      const normalizedLots = Math.floor(calculatedLots * 100) / 100;
+      // محاسبه دقیق ضرر به ازای هر ۱ لات بر مبنای مشخصات سرور بروکر
+      const lossPerLot = (slDist / tickSize) * tickValue;
+
+      if (lossPerLot <= 0) {
+        document.getElementById('lotSize').innerText = '0.00 Lot';
+        return;
+      }
+
+      const calculatedLots = riskCash / lossPerLot;
+      const normalizedLots = Math.floor(calculatedLots * 100) / 100; // گرد کردن استاندارد به گام 0.01
 
       document.getElementById('lotSize').innerText = normalizedLots.toFixed(2) + ' Lot';
       document.getElementById('tpDistance').innerText = (slDist * 2).toFixed(1) + ' واحد';
     }
-
-    calculate();
   </script>
 </body>
 </html>
